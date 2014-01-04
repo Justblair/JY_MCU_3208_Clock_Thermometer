@@ -1,16 +1,13 @@
-//#define F_CPU 1000000
+//#define F_CPU 1000000  // Remant from original code
 #include <OneWire.h>
-#include <DallasTemperature.h>
 
 // Data wire is plugged into port 2 on the Arduino
 #define ONE_WIRE_BUS 16
 
-// Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
-OneWire oneWire(ONE_WIRE_BUS);
+// Setup a oneWire instance to communicate with Dallas temperature IC)
+OneWire tempSensor(ONE_WIRE_BUS);
 
-// Pass our oneWire reference to Dallas Temperature. 
-DallasTemperature sensors(&oneWire);
-
+// This array stores the numbers that we use a lot in the clock
 PROGMEM byte bigdigits[10][6] = {
 	{ 126, 129, 129, 129, 129, 126 },		// 0
 	{ 128, 132, 130, 255, 128, 128 },		// 1
@@ -28,7 +25,7 @@ PROGMEM byte bigdigits[10][6] = {
 
 #define HTport   PORTB
 #define HTddr    DDRB
-#define HTstrobe 3
+#define HTstrobe 3		// These are the AVR PortB numbers, not the Arduino equivelants
 #define HTclk    4
 #define HTdata   5
 
@@ -40,10 +37,14 @@ PROGMEM byte bigdigits[10][6] = {
 #define HTdata1   HTport|= (1<<HTdata)
 #define HTpinsetup() do{  HTddr |=(1<<HTstrobe)|(1<<HTclk)|(1<<HTdata); HTport|=(1<<HTstrobe)|(1<<HTclk)|(1<<HTdata);  }while(0)
 
-// set as output and all high
+// Key Definitions. 
+// We will do all of this using C++ commands as it is more efficient than using the Arduino functions
+
 #define key1 ((PIND&(1<<7))==0) // read the status of PD7 a bit quicker that using digitalRead(7);
 #define key2 ((PIND&(1<<6))==0) // ditto for PD6  (Pin 6 on a normal Ardudino NG)
 #define key3 ((PIND&(1<<5))==0) // ditto for PD5  (Pin 5 on a normal Ardudino NG)
+
+// set as Keys as output and all high to enable the AVR's pullup resistors
 #define keysetup() do{ DDRD&=0xff-(1<<7)-(1<<6)-(1<<5); PORTD|=(1<<7)+(1<<6)+(1<<5); }while(0)  //input, pull up
 
 //the screen array, 1 byte = 1 column, left to right, lsb at top. 
@@ -60,20 +61,13 @@ byte leds[32];
 #define HTblinkoff   0b100000010000 //Blinking off  <default
 #define HTwrite      0b1010000000   // 101-aaaaaaa-dddd-dddd-dddd-dddd-dddd-... aaaaaaa:nibble adress 0..3F   (5F for 24*16)
 
-volatile byte sec = 5;
-byte sec0 = 200;
-byte minute = 00;
+volatile byte sec = 5;				// this is volatile as it is altered within an interrupt
+byte sec0 = 200;					// 
+byte minute = 00;					// Set the minutes
 byte hour = 12;
-byte day, month;
-uint16_t year;
 byte changing, bright = 3;
 byte brights[4] = { 0, 2, 6, 15 }; //brightness levels
 
-//ADRESS: MSB first
-//DATA: LSB first     transferring a byte (msb first) fills one row of one 8*8-matrix, msb left, starting with the left matrix
-//timing: pull strobe LOW, bits evaluated at rising clock edge, strobe high
-//commands can be queued: 100-ccccccccc-ccccccccc-ccccccccc-... (ccccccccc: without 100 at front)
-//setup: cast startsys, setclock, setlayout, ledon, brightness+(15<<1), blinkoff
 
 void HTsend(uint16_t data, byte bits) {  //MSB first
 	uint16_t bit = ((uint16_t)1) << (bits - 1);
@@ -95,12 +89,12 @@ void HTsendscreen(void) {
 	HTstrobe0;
 	HTsend(HTwrite, 10);
 	for (byte mtx = 0; mtx < 4; mtx++)  //sending 8x8-matrices left to right, rows top to bottom, MSB left
-	for (byte row = 0; row < 8; row++) {  //while leds[] is organized in columns for ease of use.
-		byte q = 0;
-		for (byte col = 0; col < 8; col++)  q = (q << 1) | ((leds[col + (mtx << 3)] >> row) & 1);
-		HTsend(q, 8);
-	}
-	HTstrobe1;
+		for (byte row = 0; row < 8; row++) {  //while leds[] is organized in columns for ease of use.
+			byte q = 0;
+			for (byte col = 0; col < 8; col++)  q = (q << 1) | ((leds[col + (mtx << 3)] >> row) & 1);
+			HTsend(q, 8);
+		}
+		HTstrobe1;
 }
 
 void HTsetup() {  //setting up the display
@@ -135,7 +129,7 @@ void incsec(byte add) {
 		while (minute >= 60) {
 			minute -= 60;  hour++;
 			while (hour >= 24) {
-				hour -= 24;  day++;
+				hour -= 24;
 			}//24hours
 		}//60min
 	}//60sec
@@ -150,7 +144,8 @@ void decsec(byte sub) {
 			else {
 				minute = 59;
 				if (hour > 0) hour--;
-				else { hour = 23; day--; }
+				else { hour = 23;
+				}
 			}//hour
 		}//minute
 		sub--;
@@ -186,23 +181,23 @@ void renderclock(void) {
 }
 
 void renderTemperature(void) {
-	sensors.requestTemperatures(); // Send the command to get temperatures
-	//delay(200);
-	byte celcius = sensors.getTempCByIndex(0);  // Find the temperature in C
-	float celciusdecimal = (sensors.getTempCByIndex(0) - celcius) * 100;
+	int celcius = getTemp();  // Find the temperature in C
+	// float celciusdecimal = (sensors.getTempCByIndex(0) - celcius) * 100;
 
-	//byte celcius = 21;
+	//int celcius = 1234;
+	byte high = celcius / 100;
+	byte low =  celcius % 100;
 	byte col = 0;
 	leds[col++] = 0;
 	leds[col++] = 0;
 	leds[col++] = 0;
-	for (byte i = 0; i < 6; i++) leds[col++] = pgm_read_byte(&bigdigits[celcius / 10][i]);
+	for (byte i = 0; i < 6; i++) leds[col++] = pgm_read_byte(&bigdigits[high / 10][i]);
 	leds[col++] = 0;
-	for (byte i = 0; i < 6; i++) leds[col++] = pgm_read_byte(&bigdigits[celcius % 10][i]);
+	for (byte i = 0; i < 6; i++) leds[col++] = pgm_read_byte(&bigdigits[high %  10][i]);
 	leds[col++] = 0;
 	leds[col++] = B10000000;
 	leds[col++] = 0;
-	for (byte i = 0; i < 6; i++) leds[col++] = pgm_read_byte(&bigdigits[(byte)celciusdecimal / 10][i]);
+	for (byte i = 0; i < 6; i++) leds[col++] = pgm_read_byte(&bigdigits[low / 10][i]);
 	leds[col++] = 0;
 	leds[col++] = B01100000;
 	leds[col++] = B10010000;
@@ -214,7 +209,7 @@ void renderTemperature(void) {
 
 void setup() {
 
-	sensors.begin();
+	// sensors.begin();
 	HTpinsetup();
 	HTsetup();
 	keysetup();
@@ -222,10 +217,10 @@ void setup() {
 
 	for (byte i = 0; i<32; i++) leds[i] = 0b01010101 << (i % 2);  HTsendscreen();
 
-}
+} 
 
 void loop(){
-	
+
 
 	if (key1) {
 		if (changing>250) incsec(20);
@@ -243,8 +238,8 @@ void loop(){
 		}
 	}
 	else changing = 0;
-	
-	if (sec < 10 && changing == 0){
+
+	if (sec < 60 && changing == 0){
 		renderTemperature();
 		HTsendscreen();
 	}
@@ -257,4 +252,78 @@ void loop(){
 	}
 
 
+}
+
+void requestTemp(){
+	// Reset the bus so that all devices are in listening mode
+	tempSensor.reset();
+
+	// Broadcast the address of the device so that it goes into listening mode
+	tempSensor.skip();
+
+	// the 0x44 command tells the tempSensor to measure the temp and store it in its scratchpad
+
+	tempSensor.write(0x44, 1);
+	// We wait a second because it takes time to take the measurement and store a value
+	delay(1000);
+}
+
+int getTemp(){
+	byte i;
+	//byte present = 0;
+	byte data[12];
+	byte addr[8];
+
+	int T_Reading;
+	int Sign_Bit;
+	int Tc_100; 
+
+		//tempSensor.reset();
+	//if(!tempSensor.search(addr)) {
+	//	tempSensor.reset_search();
+	//	// return;
+	//}
+	// Reset the bus so that all devices are in listening mode
+	tempSensor.reset();
+
+	// Broadcast the address of the device so that it goes into listening mode
+	//tempSensor.select(addr[0]);
+	
+	tempSensor.skip();
+	// the 0x44 command tells the tempSensor to measure the temp and store it in its scratchpad
+
+	tempSensor.write(0x44, 1);
+	// We wait a second because it takes time to take the measurement and store a value
+	delay(1000);
+	// Hopefully there will be a couple of bits in the scratchpad that represent the temp
+
+	tempSensor.reset();
+	tempSensor.skip();
+	tempSensor.write(0xBE);
+
+	// The tempSensor will now send us 9 bytes (bytes 0 - 8)
+	for(i=0;i<9;i++){
+		data[i]=tempSensor.read();
+	}
+
+	// bytes 0 and 1 are where the temperature is stored
+	//data[1] = B00000001;
+	//data[0] = B10010001;
+
+	T_Reading=(data[1] << 8) + data[0];
+	Sign_Bit=T_Reading & 0x8000;  // test most sig bit
+	if(Sign_Bit){  // check to see if the sign bit indicates a negative value
+		T_Reading=(T_Reading ^ 0xffff) + 1;  // 2's comp
+	}
+
+	// We will now calculate the temperature * 100.  This means I can avoid using floats 
+	// which keeps the program size down!
+
+	// Uncomment if using the tempSensor part which is 12bit resolution by default
+	//Tc_100 = (6 * T_Reading) + (T_Reading / 4);  // multiply by (100 * 0.0625) or 6.25
+
+	// uncomment this if using DS1820 (and DS18S20) part which is 9 bit resolution
+	Tc_100 = (T_Reading)*50;  //  This is the raw reading /2*100
+
+	return Tc_100;
 }
