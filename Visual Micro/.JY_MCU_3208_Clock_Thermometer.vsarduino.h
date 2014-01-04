@@ -1,6 +1,6 @@
 #ifndef _VSARDUINO_H_
 #define _VSARDUINO_H_
-//Board = JY-MCU-3208 with internal OSC
+//Board = JY-MCU-3208 Optiboot8 (8mhz)
 #define __AVR_ATmega8__
 #define 
 #define ARDUINO 105
@@ -42,6 +42,8 @@ void renderclock(void);
 void renderTemperature(void);
 //
 //
+void requestTemp();
+int getTemp();
 
 #include "D:\Documents\Documents\Arduino\hardware\JYMCU3208\variants\standard\pins_arduino.h" 
 #include "D:\Documents\Documents\Arduino\hardware\JYMCU3208\cores\arduino\arduino.h"
