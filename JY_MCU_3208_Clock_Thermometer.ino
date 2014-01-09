@@ -1,4 +1,4 @@
-//#define F_CPU 1000000  // Remant from original code
+//#define F_CPU 8000000L// Remant from original code
 #include <OneWire.h>
 
 // Data wire is plugged into port 2 on the Arduino
@@ -6,6 +6,15 @@
 
 // Setup a oneWire instance to communicate with Dallas temperature IC)
 OneWire tempSensor(ONE_WIRE_BUS);
+
+// Setup the clock
+#include <DS1302.h>
+
+// Init the DS1302
+DS1302 rtc(10, 9, 8);
+
+// Init a Time-data structure
+Time t;
 
 // This array stores the numbers that we use a lot in the clock
 PROGMEM byte bigdigits[10][6] = {
@@ -68,6 +77,8 @@ byte hour = 12;
 byte changing, bright = 3;
 byte brights[4] = { 0, 2, 6, 15 }; //brightness levels
 
+unsigned long lastMillis = 0;			// If using the millis function to keep time
+
 
 void HTsend(uint16_t data, byte bits) {  //MSB first
 	uint16_t bit = ((uint16_t)1) << (bits - 1);
@@ -118,21 +129,39 @@ inline void clocksetup() {  // CLOCK, interrupt every second
 }
 
 // CLOCK interrupt
-ISR(TIMER2_OVF_vect) {     //timer2-overflow-int
-	sec++;
-}
+//ISR(TIMER2_OVF_vect) {     //timer2-overflow-int
+//	sec++;
+//}
+
+//void incsec(byte add) {
+//	sec += add;
+//	while (sec >= 60) {
+//		sec -= 60;  minute++;
+//		while (minute >= 60) {
+//			minute -= 60;  hour++;
+//			while (hour >= 24) {
+//				hour -= 24;
+//			}//24hours
+//		}//60min
+//	}//60sec
+//}
 
 void incsec(byte add) {
 	sec += add;
 	while (sec >= 60) {
-		sec -= 60;  minute++;
-		while (minute >= 60) {
-			minute -= 60;  hour++;
-			while (hour >= 24) {
-				hour -= 24;
-			}//24hours
-		}//60min
-	}//60sec
+		if (add == 0){  // we are not setting the clock
+			getTime();
+			return; 
+		} else {
+			sec -= 60;  minute++;
+			while (minute >= 60) {
+				minute -= 60;  hour++;
+				while (hour >= 24) {
+					hour -= 24;
+				}//24hours
+			}//60min
+		}//60sec
+	}
 }
 
 void decsec(byte sub) {
@@ -208,18 +237,26 @@ void renderTemperature(void) {
 }
 
 void setup() {
+	// Set the clock to run-mode, and disable the write protection
+	rtc.halt(false);
+	rtc.writeProtect(false);
 
-	// sensors.begin();
+	// The following lines can be commented out to use the values already stored in the DS1302
+	//rtc.setDOW(FRIDAY);        // Set Day-of-Week to FRIDAY
+	//rtc.setTime(15, 0, 0);     // Set the time to 12:00:00 (24hr format)
+	//rtc.setDate(6, 8, 2010);   // Set the date to August 6th, 2010
+	//// sensors.begin();
 	HTpinsetup();
 	HTsetup();
 	keysetup();
-	clocksetup();
+	//clocksetup();
 
 	for (byte i = 0; i<32; i++) leds[i] = 0b01010101 << (i % 2);  HTsendscreen();
-
+	getTime();
 } 
 
 void loop(){
+	// Get data from the DS1302
 
 
 	if (key1) {
@@ -236,10 +273,15 @@ void loop(){
 			bright = (bright + 1) % 4;
 			HTbrightness(brights[bright]);
 		}
-	}
-	else changing = 0;
+	} else {  // no buttons are pressed.
+		if (changing > 1){
 
-	if (sec < 60 && changing == 0){
+		}
+		
+		changing = 0;
+	}
+
+	if (sec < 3 && changing == 0){
 		renderTemperature();
 		HTsendscreen();
 	}
@@ -251,7 +293,10 @@ void loop(){
 		}
 	}
 
-
+	if (lastMillis + 1000 <= millis()){
+		sec++;
+		lastMillis = millis();
+	}
 }
 
 void requestTemp(){
@@ -278,7 +323,7 @@ int getTemp(){
 	int Sign_Bit;
 	int Tc_100; 
 
-		//tempSensor.reset();
+	//tempSensor.reset();
 	//if(!tempSensor.search(addr)) {
 	//	tempSensor.reset_search();
 	//	// return;
@@ -288,7 +333,7 @@ int getTemp(){
 
 	// Broadcast the address of the device so that it goes into listening mode
 	//tempSensor.select(addr[0]);
-	
+
 	tempSensor.skip();
 	// the 0x44 command tells the tempSensor to measure the temp and store it in its scratchpad
 
@@ -326,4 +371,12 @@ int getTemp(){
 	Tc_100 = (T_Reading)*50;  //  This is the raw reading /2*100
 
 	return Tc_100;
+}
+
+void getTime(){
+
+	t = rtc.getTime();
+	hour = t.hour;
+	minute =  t.min;
+	sec = t.sec;
 }
