@@ -5,6 +5,7 @@
 *.suo
 *.user
 *.sln.docstates
+*.sln
 
 # Build results
 [Dd]ebug/
@@ -177,3 +178,13 @@ Desktop.ini
 
 # Recycle Bin used on file shares
 $RECYCLE.BIN/
+*.dll
+*.vxproj
+*.dll
+.xml
+*.dll
+*.xml
+*.dll
+*.vsarduino.h
+*.dll
+*.vcxproj*
