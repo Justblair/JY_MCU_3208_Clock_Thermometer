@@ -240,7 +240,7 @@ void setup() {
 	// Set the clock to run-mode, and disable the write protection
 	rtc.halt(false);
 	rtc.writeProtect(false);
-
+	rtc.setTCR(TCR_D1R2K);  // Set the Trickle Charge register for 1 diode 2K resistance 
 	// The following lines can be commented out to use the values already stored in the DS1302
 	//rtc.setDOW(FRIDAY);        // Set Day-of-Week to FRIDAY
 	//rtc.setTime(15, 0, 0);     // Set the time to 12:00:00 (24hr format)
@@ -252,12 +252,13 @@ void setup() {
 	//clocksetup();
 
 	for (byte i = 0; i<32; i++) leds[i] = 0b01010101 << (i % 2);  HTsendscreen();
+
 	getTime();
 } 
 
 void loop(){
 	// Get data from the DS1302
-
+	byte key3Presses = 0;
 
 	if (key1) {
 		if (changing>250) incsec(20);
@@ -268,16 +269,22 @@ void loop(){
 		else { changing++; decsec(1); }
 	}
 	else if (key3) {
-		if (!changing) {
-			changing = 1;
-			bright = (bright + 1) % 4;
-			HTbrightness(brights[bright]);
+		if(changing>20) { 
+			renderTemperature();
+			HTsendscreen();
+			delay (400);
+			if (key3){
+				changing = 1;
+				bright = (bright + 1) % 4;
+				HTbrightness(brights[bright]);
+			}
+		} else {
+			changing++; 
 		}
 	} else {  // no buttons are pressed.
-		if (changing > 1){
-
+		if (changing > 0){  // A new value has been created.
+			rtc.setTime(hour, minute, sec);
 		}
-		
 		changing = 0;
 	}
 
@@ -339,7 +346,7 @@ int getTemp(){
 
 	tempSensor.write(0x44, 1);
 	// We wait a second because it takes time to take the measurement and store a value
-	delay(1000);
+	delay(500);
 	// Hopefully there will be a couple of bits in the scratchpad that represent the temp
 
 	tempSensor.reset();
