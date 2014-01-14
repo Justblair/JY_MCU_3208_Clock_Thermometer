@@ -1,17 +1,15 @@
 //#define F_CPU 8000000L// Remant from original code
 #include <OneWire.h>
 
-// Data wire is plugged into port 2 on the Arduino
-#define ONE_WIRE_BUS 16
-
 // Setup a oneWire instance to communicate with Dallas temperature IC)
-OneWire tempSensor(ONE_WIRE_BUS);
+OneWire tempSensor(16);
 
 // Setup the clock
-#include <DS1302.h>
+#include <JYMCU3208.h>
 
-// Init the DS1302
-DS1302 rtc(10, 9, 8);
+// Init the DS1302, in this version of the library we dont need to include pin numbers
+DS1302 rtc;
+
 
 // Init a Time-data structure
 Time t;
@@ -71,6 +69,7 @@ byte leds[32];
 #define HTwrite      0b1010000000   // 101-aaaaaaa-dddd-dddd-dddd-dddd-dddd-... aaaaaaa:nibble adress 0..3F   (5F for 24*16)
 
 volatile byte sec = 5;				// this is volatile as it is altered within an interrupt
+
 byte sec0 = 200;					// 
 byte minute = 00;					// Set the minutes
 byte hour = 12;
@@ -330,12 +329,6 @@ int getTemp(){
 	int Sign_Bit;
 	int Tc_100; 
 
-	//tempSensor.reset();
-	//if(!tempSensor.search(addr)) {
-	//	tempSensor.reset_search();
-	//	// return;
-	//}
-	// Reset the bus so that all devices are in listening mode
 	tempSensor.reset();
 
 	// Broadcast the address of the device so that it goes into listening mode
